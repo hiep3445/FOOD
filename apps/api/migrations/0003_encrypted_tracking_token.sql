@@ -1,0 +1,1 @@
+ALTER TABLE orders ADD COLUMN tracking_token_ciphertext TEXT NOT NULL DEFAULT '';

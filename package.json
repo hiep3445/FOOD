@@ -1,0 +1,26 @@
+{
+  "name": "food-ordering",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/web",
+    "apps/api"
+  ],
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "npm --workspace @food/api run dev",
+    "dev:web": "npm --workspace @food/web run dev",
+    "build": "npm --workspace @food/web run build",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspace @food/api",
+    "deploy": "npm run build && wrangler deploy",
+    "db:local": "wrangler d1 migrations apply food-ordering --local",
+    "db:remote": "wrangler d1 migrations apply food-ordering --remote"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.12",
+    "wrangler": "^4.45.0"
+  }
+}
