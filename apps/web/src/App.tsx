@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, Route, Routes, useNavigate } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ArrowRight, Check, ChefHat, Clock3, Minus, Plus, Search, ShoppingBag, Soup, Trash2, Truck, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Bot, Check, ChefHat, Clock3, Minus, Plus, Search, Send, ShoppingBag, Soup, Trash2, Truck, X } from 'lucide-react'
 import { z } from 'zod'
 
 type Category = { id: string; name: string; slug: string }
@@ -87,6 +87,7 @@ export default function App() {
         <section className="promise-strip"><span><Truck size={18} /> Giao tận nhà</span><span><Check size={18} /> Thanh toán khi nhận</span><span><Soup size={18} /> Nấu mới mỗi ngày</span></section>
       </main>
       <footer className="site-footer"><Link className="brand" to="/"><span className="brand-mark"><ChefHat size={20} /></span><span>Bếp Nhà Mình<small>MÓN NGON GIAO TẬN NHÀ</small></span></Link><p>Ấm bụng như bữa cơm nhà.</p><Link to="/admin">Quản trị</Link></footer>
+      <ChatWidget />
       {cartOpen && <div className="drawer-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setCartOpen(false) }}><aside className="cart-drawer" aria-label="Giỏ hàng"><div className="drawer-heading"><div><span className="eyebrow">BẾP NHẬN ĐƠN</span><h2>Giỏ của bạn <span>({itemCount})</span></h2></div><button className="icon-button" aria-label="Đóng giỏ hàng" onClick={() => setCartOpen(false)}><X /></button></div>
         {cartItems.length === 0 ? <div className="drawer-empty"><ShoppingBag size={31} /><p>Giỏ còn đang trống</p><button className="text-button" onClick={() => setCartOpen(false)}>Xem thực đơn <ArrowRight size={15} /></button></div> : <><div className="cart-lines">{cartItems.map((product) => <div className="cart-line" key={product.id}><div className="cart-line-copy"><strong>{product.name}</strong><span>{money(product.price)}</span></div><div className="quantity-control"><button aria-label="Giảm số lượng" onClick={() => updateQuantity(product.id, cart[product.id] - 1)}>{cart[product.id] === 1 ? <Trash2 size={15} /> : <Minus size={15} />}</button><span>{cart[product.id]}</span><button aria-label="Tăng số lượng" disabled={cart[product.id] >= 20} onClick={() => updateQuantity(product.id, cart[product.id] + 1)}><Plus size={15} /></button></div></div>)}</div><div className="cart-summary"><div><span>Tạm tính</span><strong>{money(subtotal)}</strong></div><div><span>Giao hàng</span><strong>{money(deliveryFee)}</strong></div><div className="summary-total"><span>Tổng cộng</span><strong>{money(subtotal + deliveryFee)}</strong></div><Link to="/checkout" onClick={() => setCartOpen(false)} className="primary-button checkout-cta">Tiến hành đặt món <ArrowRight size={17} /></Link><p className="cod-note">Thanh toán tiền mặt khi nhận món</p></div></>}
       </aside></div>}
@@ -96,6 +97,50 @@ export default function App() {
     <Route path="/admin" element={<AdminPage />} />
     <Route path="*" element={<main className="standalone-page"><h1>Không tìm thấy trang</h1><Link to="/">Về trang chủ <ArrowRight size={16} /></Link></main>} />
   </Routes>
+}
+
+type ChatMessage = { id: number; text: string; from: 'bot' | 'customer' }
+
+function ChatWidget() {
+  const [open, setOpen] = useState(false)
+  const [message, setMessage] = useState('')
+  const [messages, setMessages] = useState<ChatMessage[]>([{ id: 0, from: 'bot', text: 'Xin chào! Mình có thể giúp bạn xem thực đơn, giá món, phí giao hàng và cách đặt món. Bạn cần hỏi gì ạ?' }])
+  const [isSending, setIsSending] = useState(false)
+  const [error, setError] = useState('')
+
+  const sendMessage = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const text = message.trim()
+    if (!text || isSending) return
+    setMessage('')
+    setError('')
+    setMessages((current) => [...current, { id: current.length, from: 'customer', text }])
+    setIsSending(true)
+    try {
+      const response = await api<{ reply: string }>('/api/chat', { method: 'POST', body: JSON.stringify({ message: text }) })
+      setMessages((current) => [...current, { id: current.length, from: 'bot', text: response.reply }])
+    } catch (sendError) {
+      setError(sendError instanceof Error ? sendError.message : 'Chưa gửi được tin nhắn. Vui lòng thử lại.')
+    } finally {
+      setIsSending(false)
+    }
+  }
+
+  return <div className="chat-widget">
+    {open && <section className="chat-panel" role="dialog" aria-label="Trò chuyện với Bếp Nhà Mình">
+      <header className="chat-header"><span className="chat-avatar"><Bot size={19} /></span><div><strong>Bếp Nhà Mình</strong><small>Trợ lý tư vấn món ăn</small></div><button className="chat-close" aria-label="Đóng trò chuyện" onClick={() => setOpen(false)}><X size={19} /></button></header>
+      <div className="chat-messages" aria-live="polite">
+        {messages.map((item) => <p className={`chat-bubble ${item.from}`} key={item.id}>{item.text}</p>)}
+        {isSending && <p className="chat-bubble bot chat-typing">Bếp đang trả lời...</p>}
+        {error && <p className="chat-error" role="alert">{error}</p>}
+      </div>
+      <form className="chat-form" onSubmit={(event) => void sendMessage(event)}>
+        <input aria-label="Tin nhắn của bạn" value={message} onChange={(event) => setMessage(event.target.value)} maxLength={500} placeholder="Nhập câu hỏi..." />
+        <button type="submit" aria-label="Gửi tin nhắn" disabled={!message.trim() || isSending}><Send size={17} /></button>
+      </form>
+    </section>}
+    <button className={`chat-launcher${open ? ' is-open' : ''}`} aria-label={open ? 'Đóng trợ lý tư vấn' : 'Mở trợ lý tư vấn'} aria-expanded={open} onClick={() => setOpen((current) => !current)}>{open ? <X size={22} /> : <><Bot size={21} /><span>Hỏi Bếp</span></>}</button>
+  </div>
 }
 
 const checkoutSchema = z.object({

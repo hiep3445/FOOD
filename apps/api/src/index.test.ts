@@ -51,6 +51,46 @@ beforeEach(async () => {
 })
 
 describe('public menu API', () => {
+  it('answers menu, product, delivery, and ordering questions in Vietnamese', async () => {
+    const menu = await request('/api/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message: 'Quán có món gì?' }),
+    })
+    expect(menu.status).toBe(200)
+    expect((await menu.json() as { reply: string }).reply).toContain('Cơm gà (45.000đ)')
+
+    const product = await request('/api/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message: 'Cơm gà giá bao nhiêu?' }),
+    })
+    expect((await product.json() as { reply: string }).reply).toContain('Cơm gà giá 45.000đ')
+
+    const delivery = await request('/api/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message: 'Phí giao hàng bao nhiêu?' }),
+    })
+    expect((await delivery.json() as { reply: string }).reply).toContain('20.000đ')
+  })
+
+  it('rejects empty or oversized chat messages', async () => {
+    const empty = await request('/api/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message: '   ' }),
+    })
+    expect(empty.status).toBe(400)
+
+    const oversized = await request('/api/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message: 'a'.repeat(501) }),
+    })
+    expect(oversized.status).toBe(400)
+  })
+
   it('returns active categories and filters products by category and search', async () => {
     const categoriesResponse = await request('/api/categories')
     expect((await categoriesResponse.json() as { categories: unknown[] }).categories).toHaveLength(1)

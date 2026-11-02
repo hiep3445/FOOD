@@ -76,6 +76,55 @@ app.get('/api/products/:id', async (context) => {
 	return context.json({ product })
 })
 
+app.post('/api/chat', async (context) => {
+	await enforceRateLimit(context.env.DB, 'chat', await requestKey(context), 30, 3600)
+	const rawBody = await context.req.json().catch(() => null)
+	const parsed = z.object({ message: z.string().trim().min(1).max(500) }).safeParse(rawBody)
+	if (!parsed.success) {
+		return context.json({ error: 'Tin nhắn cần có từ 1 đến 500 ký tự.' }, 400)
+	}
+
+	const normalize = (value: string) => value.toLocaleLowerCase('vi').normalize('NFD')
+		.replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd')
+	const message = normalize(parsed.data.message)
+	const mentionsMenu = /mon|thuc don|goi y|co gi|ban gi|mon nao/.test(message)
+	const isGreeting = /^(xin chao|chao|hello|hi|alo)\b/.test(message)
+
+	if (isGreeting) {
+		return context.json({ reply: 'Chào bạn! Mình có thể giúp bạn xem thực đơn, giá món, phí giao hàng và cách đặt món. Bạn muốn hỏi gì ạ?' })
+	}
+	if (/phi giao|giao hang|ship|van chuyen/.test(message)) {
+		const deliveryFee = Number(context.env.DELIVERY_FEE)
+		if (!Number.isSafeInteger(deliveryFee) || deliveryFee < 0) throw new HTTPException(500, { message: 'Cấu hình giao hàng không hợp lệ.' })
+		return context.json({ reply: `Quán giao hàng tận nơi, phí giao hiện tại là ${new Intl.NumberFormat('vi-VN').format(deliveryFee)}đ.` })
+	}
+	if (/thanh toan|cod|tien mat|dat hang/.test(message)) {
+		return context.json({ reply: 'Quán hiện hỗ trợ giao hàng tận nơi và thanh toán tiền mặt khi nhận món (COD). Bạn chọn món, thêm vào giỏ rồi điền thông tin giao hàng để đặt nhé.' })
+	}
+	if (/bao lau|mat bao lau|thoi gian|may phut/.test(message)) {
+		return context.json({ reply: 'Thời gian giao dự kiến khoảng 30–45 phút. Thời gian thực tế có thể thay đổi tùy khu vực và tình hình giao hàng.' })
+	}
+	if (/theo doi|kiem tra don|trang thai don/.test(message)) {
+		return context.json({ reply: 'Sau khi đặt món thành công, bạn có thể xem tình trạng đơn tại mục “Theo dõi đơn” trên đầu trang.' })
+	}
+
+	const result = await context.env.DB.prepare(
+		'SELECT p.name, p.description, p.price, p.is_available AS isAvailable FROM products p JOIN categories c ON c.id = p.category_id WHERE c.is_active = 1 ORDER BY c.sort_order, p.name',
+	).all<{ name: string; description: string; price: number; isAvailable: number }>()
+	const product = result.results.find((item) => message.includes(normalize(item.name)))
+	if (product) {
+		const availability = product.isAvailable ? 'Hiện món đang có thể đặt.' : 'Món hiện tạm hết.'
+		const description = product.description ? ` ${product.description}` : ''
+		return context.json({ reply: `${product.name} giá ${new Intl.NumberFormat('vi-VN').format(product.price)}đ.${description} ${availability}` })
+	}
+	if (mentionsMenu) {
+		if (!result.results.length) return context.json({ reply: 'Hiện quán chưa cập nhật món ăn. Bạn vui lòng quay lại xem thực đơn sau nhé.' })
+		const menu = result.results.map((item) => `${item.name} (${new Intl.NumberFormat('vi-VN').format(item.price)}đ${item.isAvailable ? '' : ', tạm hết'})`).join(', ')
+		return context.json({ reply: `Thực đơn hiện có: ${menu}. Bạn nhắn tên món để xem thêm thông tin nhé.` })
+	}
+	return context.json({ reply: 'Mình có thể hỗ trợ về thực đơn, giá món, phí giao hàng, thời gian giao, thanh toán COD và theo dõi đơn. Bạn thử hỏi cụ thể hơn nhé!' })
+})
+
 app.get('/api/images/:key', async (context) => {
 	const key = context.req.param('key')
 	if (!/^[a-f0-9-]{36}\.(?:jpg|png|webp)$/.test(key)) throw new HTTPException(404, { message: 'Không tìm thấy ảnh.' })
